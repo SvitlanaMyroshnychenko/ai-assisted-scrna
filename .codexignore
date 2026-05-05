@@ -1,0 +1,37 @@
+# Biological data
+data/
+*.h5ad
+*.h5
+*.loom
+*.mtx
+*.mtx.gz
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.bam
+*.bai
+*.cram
+*.crai
+
+# Generated outputs
+results/
+reports/figures/
+reports/tables/
+logs/
+*.log
+*.out
+*.err
+
+# Secrets
+.env
+.env.*
+configs/samples.server.csv
+configs/pipeline.server.yaml
+
+# IDE / cache
+.idea/
+.vscode/
+__pycache__/
+.ipynb_checkpoints/
+.venv/
