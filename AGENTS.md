@@ -38,7 +38,8 @@ You are helping develop a reproducible single-cell RNA-seq analysis pipeline.
 - Never use `rm -rf` unless the user explicitly approves the exact command.
 - Do not open, print, summarize, or upload large biological data files.
 - Do not commit `.env`, `.env.*`, logs, generated results, large matrices, or processed `.h5ad` files.
-
+- Respect `.codexignore`; never inspect ignored files or directories
+- 
 ## Project layout
 
 Expected files and folders:
