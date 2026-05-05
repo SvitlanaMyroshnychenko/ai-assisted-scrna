@@ -1,0 +1,52 @@
+# Sensitive / large biological data
+data/raw/
+data/processed/
+results/
+logs/
+
+# Generated reports
+reports/figures/
+reports/tables/
+
+# Server-only configs
+configs/samples.server.csv
+configs/pipeline.server.yaml
+
+# Single-cell / sequencing files
+*.h5ad
+*.h5
+*.loom
+*.mtx
+*.mtx.gz
+*.tsv.gz
+*.fastq
+*.fastq.gz
+*.fq
+*.fq.gz
+*.bam
+*.bai
+*.cram
+*.crai
+
+# Python
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.venv/
+venv/
+.env
+
+# Conda
+.conda/
+envs/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+*.out
+*.err

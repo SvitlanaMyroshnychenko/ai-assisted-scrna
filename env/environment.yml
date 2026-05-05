@@ -1,0 +1,28 @@
+name: scrna-agent
+
+channels:
+  - conda-forge
+  - bioconda
+
+dependencies:
+  - python=3.11
+  - pip
+  - numpy
+  - pandas
+  - scipy
+  - matplotlib
+  - seaborn
+  - scikit-learn
+  - h5py
+  - pytables
+  - pyyaml
+  - scanpy
+  - anndata
+  - harmonypy
+  - leidenalg
+  - igraph
+  - python-igraph
+  - jupyterlab
+  - ipykernel
+  - pip:
+      - scrublet

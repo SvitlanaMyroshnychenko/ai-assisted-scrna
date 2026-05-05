@@ -1,0 +1,58 @@
+project_name: scrna_codex_project
+
+input:
+  sample_sheet: configs/samples.server.csv
+  format: 10x_mtx
+
+output:
+  processed_dir: data/processed
+  figures_dir: reports/figures
+  tables_dir: reports/tables
+  logs_dir: logs
+
+qc:
+  min_genes: 200
+  min_cells: 3
+  max_pct_mt: 20
+  max_genes: null
+  max_counts: null
+  mt_gene_prefix: "MT-"
+  ribo_gene_prefixes:
+    - "RPS"
+    - "RPL"
+
+normalization:
+  target_sum: 10000
+  log1p: true
+
+hvg:
+  n_top_genes: 2000
+  flavor: seurat_v3
+  batch_key: sample_id
+
+pca:
+  n_comps: 50
+  svd_solver: arpack
+
+harmony:
+  enabled: true
+  batch_key: sample_id
+  basis: X_pca
+  adjusted_basis: X_pca_harmony
+
+neighbors:
+  n_neighbors: 15
+  n_pcs: 30
+
+umap:
+  random_state: 0
+
+clustering:
+  method: leiden
+  resolution: 0.5
+  key_added: leiden
+
+markers:
+  groupby: leiden
+  method: wilcoxon
+  n_genes: 100

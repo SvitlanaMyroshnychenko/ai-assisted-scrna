@@ -1,0 +1,5 @@
+sample_id,path,condition,batch
+sample1,data/raw/sample1,control,batch1
+sample2,data/raw/sample2,treatment,batch1
+sample3,data/raw/sample3,control,batch2
+sample4,data/raw/sample4,treatment,batch2
