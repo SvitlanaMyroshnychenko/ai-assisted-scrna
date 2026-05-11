@@ -1,7 +1,7 @@
 # Sensitive / large biological data
 data/raw/
 data/processed/
-results/
+#results/
 logs/
 
 # Generated reports

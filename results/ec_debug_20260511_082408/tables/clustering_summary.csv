@@ -1,0 +1,2 @@
+input_h5ad,cells,genes,neighbors_use_rep,n_neighbors,n_pcs,umap_random_state,clustering_method,leiden_resolution,clustering_key,n_clusters,cluster_sizes_preview,X_umap_present,X_umap_shape,X_pca_present,X_pca_harmony_present
+/mnt/12tb_dsk3/svitlana/scrna-agent/results/ec_debug_20260511_082408/data/harmony.h5ad,4255,15519,X_pca_harmony,15,30,42,leiden,0.5,leiden,13,0:1409; 1:560; 10:18; 11:17; 12:17; 2:530; 3:527; 4:411; 5:316; 6:218; ... (13 total),True,"(4255, 2)",True,True

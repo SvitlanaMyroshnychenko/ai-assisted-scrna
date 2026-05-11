@@ -1,0 +1,2 @@
+input_h5ad,cells,genes,groupby,method,n_groups,groups,n_genes_requested,used_raw,marker_table_path
+/mnt/12tb_dsk3/svitlana/scrna-agent/results/ec_debug_20260511_082408/data/clustered.h5ad,4255,15519,leiden,wilcoxon,13,0; 1; 10; 11; 12; 2; 3; 4; 5; 6; 7; 8; 9,100,True,/mnt/12tb_dsk3/svitlana/scrna-agent/results/ec_debug_20260511_082408/tables/cluster_markers.csv
