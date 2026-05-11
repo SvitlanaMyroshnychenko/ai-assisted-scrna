@@ -10,33 +10,46 @@ output:
   tables_dir: reports/tables
   logs_dir: logs
 
+run:
+  id: ec_harmony_test
+  add_timestamp: true
+  base_dir: results
+
 qc:
   min_genes: 200
-  min_cells: 3
-  max_pct_mt: 20
+  min_cells: 10
+  max_pct_mt: 8
   max_genes: null
   max_counts: null
   mt_gene_prefix: "MT-"
   ribo_gene_prefixes:
     - "RPS"
     - "RPL"
+  hb_gene_pattern: "^HB[^(P)]"
+  mad_filter:
+    enabled: true
+    log1p_total_counts_nmads: 5
+    log1p_n_genes_by_counts_nmads: 5
+    pct_counts_mt_nmads: 3
+    mt_direction: upper
 
 normalization:
   target_sum: 10000
   log1p: true
 
 hvg:
-  n_top_genes: 2000
+  n_top_genes: 3000
   flavor: seurat_v3
   batch_key: sample_id
 
 pca:
   n_comps: 50
   svd_solver: arpack
+  random_state: 42
 
 harmony:
   enabled: true
-  batch_key: sample_id
+  batch_key: individualID
   basis: X_pca
   adjusted_basis: X_pca_harmony
 
@@ -45,12 +58,17 @@ neighbors:
   n_pcs: 30
 
 umap:
-  random_state: 0
+  random_state: 42
 
 clustering:
   method: leiden
   resolution: 0.5
   key_added: leiden
+  random_state: 42
+
+debug:
+  max_cells: null
+  random_state: 42
 
 markers:
   groupby: leiden

@@ -1,6 +1,6 @@
-# Project: local Codex agent for remote scRNA-seq pipeline
+# Project: local Codex agent for remote scRNA-seq workflow
 
-You are helping develop a reproducible single-cell RNA-seq analysis pipeline.
+You are helping develop a reproducible scRNA-seq analysis workflow.
 
 ## Execution model
 
@@ -29,8 +29,11 @@ You are helping develop a reproducible single-cell RNA-seq analysis pipeline.
 
 - Never request raw count matrices, `.h5ad`, `.h5`, `.loom`, `.mtx`, FASTQ, BAM, CRAM, or patient metadata.
 - Never add real sample identifiers, patient identifiers, private paths, private server names, private project names, or access credentials to committed files.
-- Use `configs/samples.template.csv` locally.
-- The real server sample sheet must be named `configs/samples.server.csv` and must remain gitignored.
+- The current notebook workflow uses `input.format: h5ad` with `input.path: /path/to/dataset.h5ad`.
+- Sample sheets are optional and are only used for `input.format: 10x_mtx`.
+- Use `configs/samples.template.csv` locally as a committed example for `10x_mtx` multi-sample input.
+- The real server sample sheet for `10x_mtx` workflows must be named `configs/samples.server.csv` and must remain gitignored.
+- `configs/samples.server.csv` is not required for the current `.h5ad` notebook workflow.
 - Use `configs/pipeline.template.yaml` locally.
 - The real server pipeline config must be named `configs/pipeline.server.yaml` and must remain gitignored.
 - Never run full analysis locally.
@@ -50,9 +53,8 @@ README.md
 env/environment.yml  
 configs/pipeline.template.yaml  
 configs/samples.template.csv  
-scripts/run_scanpy_pipeline.py  
-scripts/slurm_run_scanpy_pipeline.sh  
-notebooks/01_view_results.ipynb  
+scripts/scrna_pipeline.py 
+notebooks/01_run_scrna_pipeline.ipynb  
 reports/  
 results/  
 logs/  
@@ -77,10 +79,10 @@ Guidelines:
 ## Standard scRNA-seq pipeline
 
 1. Read parameters from YAML config
-2. Read sample metadata from CSV
-3. Load data (10x mtx / h5ad / etc.)
-4. Add metadata to adata.obs
-5. Concatenate samples
+2. Read sample metadata from CSV only for `input.format: 10x_mtx`
+3. Load data (`h5ad` or 10x mtx)
+4. Add metadata to adata.obs when sample metadata is provided
+5. Concatenate samples for multi-sample 10x input
 6. Compute QC metrics
 7. Filter cells and genes
 8. Normalize
@@ -124,6 +126,15 @@ Guidelines:
 - Save marker tables
 - Do not assign cell types without evidence
 
+## Biology reviewer mode
+
+- Use `prompts/biology_reviewer.md` when the user asks for a biology review of a run.
+- Review only `biology_review_packet.md`, marker tables, QC summaries, and user-provided plots or screenshots unless the user explicitly allows deeper inspection.
+- Do not access `data/` or inspect `.h5ad` files directly during biology review unless explicitly allowed.
+- Provide tentative interpretations only, with marker evidence and uncertainty clearly separated.
+- Recommend practical next checks such as continuing, changing Leiden resolution, changing the Harmony batch key, skipping Harmony, or inspecting specific clusters.
+- Never recommend biological disease, diagnosis, treatment, phenotype, condition, or outcome variables as Harmony batch keys.
+
 ## Differential expression
 
 - Distinguish marker vs condition DE
@@ -149,7 +160,7 @@ Do NOT run full analysis locally.
 
 Pipeline will run on server:
 
-conda run -n scrna-agent python scripts/run_scanpy_pipeline.py --config configs/pipeline.server.yaml
+conda run -n scrna-agent python scripts/scrna_pipeline.py --config configs/pipeline.server.yaml
 
 ## Codex behavior
 
