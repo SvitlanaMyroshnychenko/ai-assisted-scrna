@@ -45,6 +45,7 @@ envs/
 .vscode/
 .DS_Store
 Thumbs.db
+*.iml
 
 # Logs
 *.log
