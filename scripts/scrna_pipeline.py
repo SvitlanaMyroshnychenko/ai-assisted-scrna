@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 from datetime import datetime
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -210,6 +211,77 @@ def write_intermediate(adata: ad.AnnData, paths: dict[str, Path], step: str) -> 
     path = intermediate_h5ad_path(paths, step)
     logging.info("Writing %s intermediate to %s", step, path)
     adata.write_h5ad(path)
+
+
+def write_workflow_state(
+    paths: dict[str, Path], config: dict[str, Any], current_step: str
+) -> None:
+    try:
+        stage_h5ads = {
+            "qc": paths["processed_dir"] / "qc.h5ad",
+            "preprocess": paths["processed_dir"] / "preprocessed.h5ad",
+            "harmony": paths["processed_dir"] / "harmony.h5ad",
+            "cluster": paths["processed_dir"] / "clustered.h5ad",
+            "markers": paths["processed_dir"] / "markers.h5ad",
+        }
+        all_h5ads = {
+            **stage_h5ads,
+            "plots": paths["processed_dir"] / "plots.h5ad",
+        }
+        completed_steps = [step for step, path in stage_h5ads.items() if path.exists()]
+        current_h5ad = all_h5ads.get(current_step)
+        latest_h5ad = current_h5ad if current_h5ad and current_h5ad.exists() else None
+        if latest_h5ad is None:
+            for path in reversed(list(all_h5ads.values())):
+                if path.exists():
+                    latest_h5ad = path
+                    break
+
+        tables_dir = paths["tables_dir"]
+        figures_dir = paths["figures_dir"]
+        debug_config = config.get("debug", {}) or {}
+        qc_config = config.get("qc", {}) or {}
+        hvg_config = config.get("hvg", {}) or {}
+        harmony_config = config.get("harmony", {}) or {}
+        neighbors_config = config.get("neighbors", {}) or {}
+        clustering_config = config.get("clustering", {}) or {}
+        markers_config = config.get("markers", {}) or {}
+
+        state = {
+            "run_id": paths["run_dir"].name,
+            "current_step": current_step,
+            "completed_steps": completed_steps,
+            "latest_h5ad": (
+                str(latest_h5ad.relative_to(paths["run_dir"])) if latest_h5ad else None
+            ),
+            "available_tables": [
+                str(path.relative_to(paths["run_dir"]))
+                for path in sorted(tables_dir.glob("*.csv"))
+            ] if tables_dir.exists() else [],
+            "available_figures": [
+                str(path.relative_to(paths["run_dir"]))
+                for path in sorted(figures_dir.glob("*.png"))
+            ] if figures_dir.exists() else [],
+            "key_parameters": {
+                "debug.max_cells": debug_config.get("max_cells"),
+                "qc.max_pct_mt": qc_config.get("max_pct_mt"),
+                "qc.mad_filter": qc_config.get("mad_filter"),
+                "hvg.n_top_genes": hvg_config.get("n_top_genes"),
+                "harmony.enabled": harmony_config.get("enabled"),
+                "harmony.batch_key": harmony_config.get("batch_key"),
+                "neighbors.n_neighbors": neighbors_config.get("n_neighbors"),
+                "neighbors.n_pcs": neighbors_config.get("n_pcs"),
+                "clustering.resolution": clustering_config.get("resolution"),
+                "markers.groupby": markers_config.get("groupby"),
+            },
+            "warnings": [],
+        }
+        state_path = paths["run_dir"] / "workflow_state.json"
+        with state_path.open("w", encoding="utf-8") as handle:
+            json.dump(state, handle, indent=2)
+            handle.write("\n")
+    except Exception as exc:
+        logging.warning("Could not write workflow_state.json: %s", exc)
 
 
 def load_sample(row: pd.Series) -> ad.AnnData:
@@ -1433,6 +1505,7 @@ def run_step(args: argparse.Namespace, config: dict[str, Any]) -> None:
         set_analysis_params(adata, config, args.config, sample_sheet, run_id, args.step)
         qc_summary.to_csv(paths["tables_dir"] / "qc_filtering_summary.csv", index=False)
         write_intermediate(adata, paths, args.step)
+        write_workflow_state(paths, config, args.step)
         return
 
     if args.step == "preprocess":
@@ -1440,6 +1513,7 @@ def run_step(args: argparse.Namespace, config: dict[str, Any]) -> None:
         adata = preprocess(adata, config)
         set_analysis_params(adata, config, args.config, None, run_id, args.step)
         write_intermediate(adata, paths, args.step)
+        write_workflow_state(paths, config, args.step)
         return
 
     if args.step == "harmony":
@@ -1448,6 +1522,7 @@ def run_step(args: argparse.Namespace, config: dict[str, Any]) -> None:
         set_analysis_params(adata, config, args.config, None, run_id, args.step)
         harmony_summary.to_csv(paths["tables_dir"] / "harmony_summary.csv", index=False)
         write_intermediate(adata, paths, args.step)
+        write_workflow_state(paths, config, args.step)
         return
 
     if args.step == "cluster":
@@ -1456,6 +1531,7 @@ def run_step(args: argparse.Namespace, config: dict[str, Any]) -> None:
         set_analysis_params(adata, config, args.config, None, run_id, args.step)
         clustering_summary.to_csv(paths["tables_dir"] / "clustering_summary.csv", index=False)
         write_intermediate(adata, paths, args.step)
+        write_workflow_state(paths, config, args.step)
         return
 
     if args.step == "markers":
@@ -1472,6 +1548,7 @@ def run_step(args: argparse.Namespace, config: dict[str, Any]) -> None:
         marker_table.to_csv(marker_table_path, index=False)
         markers_summary.to_csv(paths["tables_dir"] / "markers_summary.csv", index=False)
         write_intermediate(adata, paths, args.step)
+        write_workflow_state(paths, config, args.step)
         return
 
     if args.step == "plots":
@@ -1479,6 +1556,7 @@ def run_step(args: argparse.Namespace, config: dict[str, Any]) -> None:
         save_plots(adata, paths, config, args.plot_context)
         set_analysis_params(adata, config, args.config, None, run_id, args.step)
         write_intermediate(adata, paths, args.step)
+        write_workflow_state(paths, config, args.step)
         return
 
     raise ValueError(f"Unsupported step: {args.step}")
