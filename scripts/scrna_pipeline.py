@@ -995,6 +995,151 @@ def save_preprocess_plots(adata: ad.AnnData, figures_dir: Path) -> None:
     plt.close(fig)
 
 
+def _plot_embedding_pair(
+    adata: ad.AnnData,
+    *,
+    basis_before: str,
+    basis_after: str,
+    color_key: str,
+    output_path: Path,
+    title: str,
+) -> bool:
+    if color_key not in adata.obs:
+        return False
+    before = adata.obsm.get(basis_before)
+    after = adata.obsm.get(basis_after)
+    if before is None or after is None or before.shape[1] < 2 or after.shape[1] < 2:
+        return False
+
+    values = adata.obs[color_key]
+    is_numeric = pd.api.types.is_numeric_dtype(values)
+    fig, axes = plt.subplots(1, 2, figsize=(11, 4.8), dpi=160)
+    for ax, embedding, panel_title, x_label, y_label in [
+        (axes[0], before, f"{basis_before}: before Harmony", "component 1", "component 2"),
+        (axes[1], after, f"{basis_after}: after Harmony", "component 1", "component 2"),
+    ]:
+        if is_numeric:
+            scatter = ax.scatter(
+                embedding[:, 0],
+                embedding[:, 1],
+                c=pd.to_numeric(values, errors="coerce"),
+                s=8,
+                alpha=0.55,
+                cmap="viridis",
+                linewidths=0,
+                rasterized=True,
+            )
+            fig.colorbar(scatter, ax=ax, label=color_key, fraction=0.046, pad=0.04)
+        else:
+            categories = values.astype("category")
+            codes = categories.cat.codes.replace(-1, np.nan)
+            scatter = ax.scatter(
+                embedding[:, 0],
+                embedding[:, 1],
+                c=codes,
+                s=8,
+                alpha=0.55,
+                cmap="tab20",
+                linewidths=0,
+                rasterized=True,
+            )
+            if len(categories.cat.categories) <= 12:
+                handles = [
+                    plt.Line2D(
+                        [0],
+                        [0],
+                        marker="o",
+                        color="w",
+                        markerfacecolor=scatter.cmap(scatter.norm(i)),
+                        markersize=5,
+                        label=str(category),
+                    )
+                    for i, category in enumerate(categories.cat.categories)
+                ]
+                ax.legend(
+                    handles=handles,
+                    title=color_key,
+                    bbox_to_anchor=(1.02, 1),
+                    loc="upper left",
+                    frameon=False,
+                    fontsize=7,
+                    title_fontsize=8,
+                )
+        ax.set_title(panel_title, fontsize=11)
+        ax.set_xlabel(x_label)
+        ax.set_ylabel(y_label)
+        style_qc_axis(ax)
+
+    fig.suptitle(title, y=1.02, fontsize=13)
+    fig.tight_layout()
+    fig.savefig(output_path, bbox_inches="tight")
+    plt.close(fig)
+    return True
+
+
+def save_harmony_diagnostic_plots(
+    adata: ad.AnnData,
+    figures_dir: Path,
+    config: dict[str, Any],
+) -> None:
+    harmony = config.get("harmony", {}) or {}
+    if not harmony.get("enabled", False):
+        print("Harmony diagnostic plots skipped because harmony.enabled is false.")
+        return
+
+    basis_before = str(harmony.get("basis") or "X_pca")
+    basis_after = str(harmony.get("adjusted_basis") or "X_pca_harmony")
+    if basis_before not in adata.obsm or basis_after not in adata.obsm:
+        print(
+            "WARNING: skipping Harmony diagnostic plots because required embeddings "
+            f"are missing: {basis_before}, {basis_after}"
+        )
+        return
+
+    batch_key = str(harmony.get("batch_key") or "")
+    if batch_key:
+        plotted = _plot_embedding_pair(
+            adata,
+            basis_before=basis_before,
+            basis_after=basis_after,
+            color_key=batch_key,
+            output_path=figures_dir / "harmony_pca_before_after_batch.png",
+            title=f"Harmony before/after colored by {batch_key}",
+        )
+        if not plotted:
+            print(f"WARNING: skipping Harmony batch diagnostic because {batch_key} is missing.")
+
+    qc_keys = [
+        key
+        for key in ["total_counts", "n_genes_by_counts", "pct_counts_mt", "is.doublet"]
+        if key in adata.obs
+    ]
+    for key in qc_keys:
+        _plot_embedding_pair(
+            adata,
+            basis_before=basis_before,
+            basis_after=basis_after,
+            color_key=key,
+            output_path=figures_dir / f"harmony_pca_before_after_qc_{key.replace('.', '_')}.png",
+            title=f"Harmony before/after colored by {key}",
+        )
+
+    biology_keys = [
+        key
+        for key in ["major.celltype", "hcelltype", "region"]
+        if key in adata.obs
+    ]
+    for key in biology_keys:
+        _plot_embedding_pair(
+            adata,
+            basis_before=basis_before,
+            basis_after=basis_after,
+            color_key=key,
+            output_path=figures_dir / f"harmony_pca_before_after_biology_{key.replace('.', '_')}.png",
+            title=f"Harmony before/after colored by {key}",
+        )
+
+
 def has_preprocess_outputs(adata: ad.AnnData) -> bool:
     return (
         "highly_variable" in adata.var
@@ -1202,6 +1347,58 @@ def save_marker_plots(adata: ad.AnnData, paths: dict[str, Path], config: dict[st
         print(f"WARNING: skipping marker_dotplot_top_genes.png because plotting failed: {exc}")
 
 
+def add_qc_threshold_line(
+    ax: plt.Axes,
+    axis: str,
+    value: Any,
+    label: str,
+    color: str = "#B4474A",
+) -> None:
+    if value is None:
+        return
+    try:
+        threshold = float(value)
+    except (TypeError, ValueError):
+        return
+    if axis == "x":
+        ax.axvline(threshold, color=color, linestyle="--", linewidth=1.4, alpha=0.9)
+        ax.text(
+            threshold,
+            0.98,
+            label,
+            transform=ax.get_xaxis_transform(),
+            rotation=90,
+            va="top",
+            ha="right",
+            color=color,
+            fontsize=8,
+        )
+    elif axis == "y":
+        ax.axhline(threshold, color=color, linestyle="--", linewidth=1.4, alpha=0.9)
+        ax.text(
+            0.98,
+            threshold,
+            label,
+            transform=ax.get_yaxis_transform(),
+            va="bottom",
+            ha="right",
+            color=color,
+            fontsize=8,
+        )
+
+
+def style_qc_axis(ax: plt.Axes) -> None:
+    ax.grid(axis="both", color="#D8DEE9", linewidth=0.7, alpha=0.55)
+    ax.set_axisbelow(True)
+    for spine in ("top", "right"):
+        ax.spines[spine].set_visible(False)
+    for spine in ("left", "bottom"):
+        ax.spines[spine].set_color("#8A94A6")
+        ax.spines[spine].set_linewidth(0.8)
+    ax.tick_params(colors="#2F3747", labelsize=9)
+    ax.title.set_color("#1F2937")
+
+
 def save_plots(
     adata: ad.AnnData,
     paths: dict[str, Path],
@@ -1219,12 +1416,17 @@ def save_plots(
         save_marker_plots(adata, paths, config)
         return
 
-    effective_context = "auto" if plot_context == "harmony" else plot_context
+    if plot_context == "harmony":
+        save_harmony_diagnostic_plots(adata, figures_dir, config)
+        return
+
+    effective_context = plot_context
     should_plot_qc = effective_context in {"auto", "qc"} and "total_counts" in adata.obs
     should_plot_preprocess = effective_context in {"auto", "preprocess"} and has_preprocess_outputs(adata)
     should_plot_umap = effective_context == "auto"
 
     if should_plot_qc:
+        qc_config = config.get("qc", {}) or {}
         qc_keys = ["total_counts", "n_genes_by_counts", "pct_counts_mt", "pct_counts_ribo"]
         if "pct_counts_hb" in adata.obs:
             qc_keys.append("pct_counts_hb")
@@ -1248,16 +1450,51 @@ def save_plots(
                 save="_qc.png",
             )
 
-        scatter_kwargs: dict[str, Any] = {
-            "x": "total_counts",
-            "y": "pct_counts_mt",
-            "title": "Library size vs mitochondrial percentage",
-            "show": False,
-            "save": "_qc_counts_vs_mt.png",
-        }
-        if "sample_id" in adata.obs:
-            scatter_kwargs["color"] = "sample_id"
-        sc.pl.scatter(adata, **scatter_kwargs)
+        if {"total_counts", "pct_counts_mt"}.issubset(adata.obs.columns):
+            fig, ax = plt.subplots(figsize=(6.2, 4.6), dpi=180)
+            if "sample_id" in adata.obs and adata.obs["sample_id"].nunique(dropna=True) <= 12:
+                for sample_id, obs in adata.obs.groupby("sample_id", observed=True):
+                    ax.scatter(
+                        obs["total_counts"],
+                        obs["pct_counts_mt"],
+                        s=9,
+                        alpha=0.5,
+                        linewidths=0,
+                        rasterized=True,
+                        label=str(sample_id),
+                    )
+                ax.legend(
+                    title="sample_id",
+                    bbox_to_anchor=(1.02, 1),
+                    loc="upper left",
+                    frameon=False,
+                    fontsize=8,
+                    title_fontsize=8,
+                )
+            else:
+                ax.scatter(
+                    adata.obs["total_counts"],
+                    adata.obs["pct_counts_mt"],
+                    s=9,
+                    alpha=0.45,
+                    linewidths=0,
+                    rasterized=True,
+                    color="#4C78A8",
+                )
+            add_qc_threshold_line(ax, "y", qc_config.get("max_pct_mt"), "max_pct_mt")
+            add_qc_threshold_line(ax, "x", qc_config.get("max_counts"), "max_counts")
+            ax.set_title("Library size vs mitochondrial percentage")
+            ax.set_xlabel("Total counts per cell")
+            ax.set_ylabel("Mitochondrial counts (%)")
+            style_qc_axis(ax)
+            fig.tight_layout()
+            fig.savefig(figures_dir / "scatter_qc_counts_vs_mt.png", bbox_inches="tight")
+            plt.close(fig)
+        else:
+            print(
+                "WARNING: skipping scatter_qc_counts_vs_mt.png because required obs "
+                "columns are missing: total_counts, pct_counts_mt"
+            )
 
         qc_scatter_keys = ["total_counts", "n_genes_by_counts", "pct_counts_mt"]
         missing_qc_scatter_keys = [key for key in qc_scatter_keys if key not in adata.obs]
@@ -1267,24 +1504,27 @@ def save_plots(
                 f"columns are missing: {missing_qc_scatter_keys}"
             )
         else:
-            fig, ax = plt.subplots(figsize=(5, 4), dpi=100)
+            fig, ax = plt.subplots(figsize=(6.2, 4.6), dpi=180)
             scatter = ax.scatter(
                 adata.obs["total_counts"],
                 adata.obs["n_genes_by_counts"],
                 c=adata.obs["pct_counts_mt"],
-                s=20,
-                alpha=0.6,
+                s=9,
+                alpha=0.55,
                 cmap="viridis",
-                edgecolors="none",
+                linewidths=0,
+                rasterized=True,
             )
+            add_qc_threshold_line(ax, "x", qc_config.get("max_counts"), "max_counts")
+            add_qc_threshold_line(ax, "y", qc_config.get("min_genes"), "min_genes")
+            add_qc_threshold_line(ax, "y", qc_config.get("max_genes"), "max_genes")
             ax.set_title("Gene diversity colored by mitochondrial percentage")
-            ax.set_xlabel("Total counts")
-            ax.set_ylabel("Detected genes")
-            for spine in ax.spines.values():
-                spine.set_visible(False)
-            fig.colorbar(scatter, ax=ax, label="pct_counts_mt")
+            ax.set_xlabel("Total counts per cell")
+            ax.set_ylabel("Detected genes per cell")
+            style_qc_axis(ax)
+            fig.colorbar(scatter, ax=ax, label="Mitochondrial counts (%)")
             fig.tight_layout()
-            fig.savefig(figures_dir / "qc_scatter_counts_vs_genes_mt.png")
+            fig.savefig(figures_dir / "qc_scatter_counts_vs_genes_mt.png", bbox_inches="tight")
             plt.close(fig)
 
         qc_titles = {
@@ -1297,13 +1537,28 @@ def save_plots(
         for key in qc_keys:
             if key not in adata.obs:
                 continue
-            fig, ax = plt.subplots(figsize=(5, 4), dpi=100)
-            adata.obs[key].hist(ax=ax, bins=50)
+            fig, ax = plt.subplots(figsize=(6.2, 4.2), dpi=180)
+            adata.obs[key].dropna().hist(
+                ax=ax,
+                bins=60,
+                color="#4C78A8",
+                edgecolor="white",
+                linewidth=0.4,
+                alpha=0.9,
+            )
+            if key == "total_counts":
+                add_qc_threshold_line(ax, "x", qc_config.get("max_counts"), "max_counts")
+            elif key == "n_genes_by_counts":
+                add_qc_threshold_line(ax, "x", qc_config.get("min_genes"), "min_genes")
+                add_qc_threshold_line(ax, "x", qc_config.get("max_genes"), "max_genes")
+            elif key == "pct_counts_mt":
+                add_qc_threshold_line(ax, "x", qc_config.get("max_pct_mt"), "max_pct_mt")
             ax.set_title(qc_titles.get(key, key))
             ax.set_xlabel(qc_titles.get(key, key))
             ax.set_ylabel("Cells")
+            style_qc_axis(ax)
             fig.tight_layout()
-            fig.savefig(figures_dir / f"qc_hist_{key}.png")
+            fig.savefig(figures_dir / f"qc_hist_{key}.png", bbox_inches="tight")
             plt.close(fig)
     elif plot_context == "qc":
         print("WARNING: skipping QC plots because total_counts is not present in adata.obs.")

@@ -1,2 +1,0 @@
-sample_id,cells_before_filtering,cells_after_filtering,cells_removed,min_genes,min_cells,max_pct_mt,max_genes,max_counts,mad_filter_enabled,log1p_total_counts_nmads,log1p_n_genes_by_counts_nmads,pct_counts_mt_nmads,mt_direction
-all,5000,4255,745,200,10,8,,,True,5,5,3,upper
