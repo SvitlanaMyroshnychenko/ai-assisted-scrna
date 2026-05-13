@@ -74,3 +74,4 @@ markers:
   groupby: leiden
   method: wilcoxon
   n_genes: 100
+  plot_top_n: 5

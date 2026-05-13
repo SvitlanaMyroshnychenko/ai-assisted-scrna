@@ -50,6 +50,7 @@ def _export_helpers_to_namespace(notebook_globals: dict) -> None:
         "run_step_with_current_config",
         "get_latest_run",
         "show_workflow_status",
+        "show_full_run_readiness_checklist",
         "suggest_next_action",
         "show_stage_decision_options",
         "show_qc_summary",
@@ -68,6 +69,9 @@ def _export_helpers_to_namespace(notebook_globals: dict) -> None:
         "show_marker_table",
         "show_marker_figures",
         "show_marker_plots",
+        "get_default_canonical_marker_panels",
+        "show_canonical_marker_panels",
+        "create_canonical_marker_review_request",
         "create_review_packet",
         "create_review_request",
         "create_review_bundle",
@@ -116,6 +120,53 @@ def initialize_notebook_context(notebook_globals: dict) -> None:
     configure_context(context)
     _export_helpers_to_namespace(notebook_globals)
     print(f"Notebook helpers initialized for RUN_ID={context.run_id}")
+
+
+DEFAULT_CANONICAL_MARKER_PANELS = {
+    "Oligodendrocyte": ["MBP", "PLP1", "MOG", "MOBP", "MAG"],
+    "OPC": ["PDGFRA", "CSPG4", "VCAN", "PTPRZ1"],
+    "Astrocyte": ["AQP4", "GFAP", "ALDH1L1", "SLC1A3", "SLC1A2"],
+    "Excitatory neuron": ["SLC17A7", "SLC17A6", "CAMK2A", "SATB2"],
+    "Inhibitory neuron": ["GAD1", "GAD2", "SLC6A1", "DLX1", "DLX2"],
+    "Microglia": ["CX3CR1", "P2RY12", "TMEM119", "AIF1", "CSF1R"],
+    "Macrophage / immune": ["PTPRC", "LST1", "TYROBP", "C1QA", "C1QB", "MRC1"],
+    "Endothelial": ["CLDN5", "FLT1", "PECAM1", "VWF"],
+    "Pericyte / vascular mural": ["PDGFRB", "RGS5", "CSPG4", "ACTA2"],
+    "Fibroblast / VLMC / ECM-like": ["COL1A1", "COL1A2", "DCN", "LUM", "NID1", "LAMA2"],
+    "Ependymal / epithelial-like": ["FOXJ1", "PIFO", "TTR", "KRT18"],
+    "Stress / immediate early": ["FOS", "JUN", "JUNB", "DUSP1"],
+    "Hemoglobin / RBC warning": ["HBA1", "HBA2", "HBB"],
+}
+
+
+def get_default_canonical_marker_panels() -> dict[str, list[str]]:
+    """Return editable canonical marker panels for broad brain cell-type review."""
+    return {
+        cell_class: list(markers)
+        for cell_class, markers in DEFAULT_CANONICAL_MARKER_PANELS.items()
+    }
+
+
+def _canonical_marker_panel_frame(
+    panels: Optional[dict[str, list[str]]] = None,
+) -> pd.DataFrame:
+    marker_panels = panels or get_default_canonical_marker_panels()
+    return pd.DataFrame(
+        [
+            {
+                "cell_class": cell_class,
+                "canonical_markers": ", ".join(markers),
+            }
+            for cell_class, markers in marker_panels.items()
+        ]
+    )
+
+
+def show_canonical_marker_panels(
+    panels: Optional[dict[str, list[str]]] = None,
+) -> None:
+    display(_canonical_marker_panel_frame(panels))
+    return None
 
 
 def _ctx() -> NotebookContext:
@@ -179,7 +230,17 @@ def write_config_from_notebook(notebook_globals: dict):
     )
     neighbors_n_neighbors = notebook_globals.get("neighbors_n_neighbors", 15)
     neighbors_n_pcs = notebook_globals.get("neighbors_n_pcs", 30)
+    umap_random_state = notebook_globals.get("umap_random_state", random_state)
     leiden_resolution = notebook_globals.get("leiden_resolution", 0.5)
+    clustering_key_added = notebook_globals.get("clustering_key_added", "leiden")
+    clustering_metadata_keys = notebook_globals.get(
+        "clustering_metadata_keys",
+        ["leiden", "individualID", "major.celltype", "hcelltype", "region"],
+    )
+    markers_groupby = notebook_globals.get("markers_groupby", clustering_key_added)
+    markers_method = notebook_globals.get("markers_method", "wilcoxon")
+    markers_n_genes = notebook_globals.get("markers_n_genes", 100)
+    marker_plot_top_n = notebook_globals.get("marker_plot_top_n", 5)
     qc_min_genes = notebook_globals.get("qc_min_genes", 200)
     qc_min_cells = notebook_globals.get("qc_min_cells", 10)
     qc_max_pct_mt = notebook_globals.get("qc_max_pct_mt", 8)
@@ -262,12 +323,13 @@ def write_config_from_notebook(notebook_globals: dict):
             "n_pcs": neighbors_n_pcs,
         },
         "umap": {
-            "random_state": random_state,
+            "random_state": umap_random_state,
         },
         "clustering": {
             "method": "leiden",
             "resolution": leiden_resolution,
-            "key_added": "leiden",
+            "key_added": clustering_key_added,
+            "metadata_keys": clustering_metadata_keys,
             "random_state": random_state,
         },
         "debug": {
@@ -275,9 +337,10 @@ def write_config_from_notebook(notebook_globals: dict):
             "random_state": random_state,
         },
         "markers": {
-            "groupby": "leiden",
-            "method": "wilcoxon",
-            "n_genes": 100,
+            "groupby": markers_groupby,
+            "method": markers_method,
+            "n_genes": markers_n_genes,
+            "plot_top_n": marker_plot_top_n,
         },
     }
 
@@ -381,6 +444,133 @@ def show_workflow_status():
     return None
 
 
+def _review_bundle_exists(latest_run: Optional[Path], step: str) -> tuple[str, str]:
+    if latest_run is None:
+        return "WARNING", "No run folder found yet."
+    ctx = _ctx()
+    bundle_dir = ctx.project_root / "prompts" / "review_requests" / f"{latest_run.name}_{step}"
+    prompt_path = bundle_dir / "review_prompt.md"
+    packet_path = bundle_dir / "biology_review_packet.md"
+    if prompt_path.exists() and packet_path.exists():
+        return "OK", f"{latest_run.name}_{step}"
+    return "WARNING", f"Missing review bundle: prompts/review_requests/{latest_run.name}_{step}"
+
+
+def _has_dangerous_harmony_key(batch_key: object) -> bool:
+    key = str(batch_key or "").lower()
+    dangerous_tokens = [
+        "diagnosis",
+        "disease",
+        "condition",
+        "phenotype",
+        "outcome",
+        "treatment",
+        "cognition",
+        "cognitive",
+        "braak",
+        "cerad",
+        "pathologic",
+        "pathological",
+        "clinical",
+        "case",
+        "control",
+    ]
+    return any(token in key for token in dangerous_tokens)
+
+
+def show_full_run_readiness_checklist():
+    """Display non-executing checks before the user manually launches a full server run."""
+    config = _read_current_config()
+    try:
+        latest_run = get_latest_run()
+    except FileNotFoundError:
+        latest_run = None
+
+    checks = []
+
+    debug_max_cells = (config.get("debug") or {}).get("max_cells")
+    checks.append(
+        {
+            "check": "Debug mode disabled",
+            "status": "OK" if debug_max_cells is None else "WARNING",
+            "detail": (
+                "debug.max_cells is None."
+                if debug_max_cells is None
+                else f"debug.max_cells is {debug_max_cells}; set it to None before the full run."
+            ),
+        }
+    )
+
+    checks.append(
+        {
+            "check": "Server config exists",
+            "status": "OK" if _ctx().config_path.exists() else "WARNING",
+            "detail": "configs/pipeline.server.yaml" if _ctx().config_path.exists() else "Missing configs/pipeline.server.yaml",
+        }
+    )
+
+    for label, step in [
+        ("QC reviewed", "qc"),
+        ("Preprocess reviewed", "preprocess"),
+        ("Harmony reviewed", "harmony"),
+        ("Clustering reviewed", "cluster"),
+        ("Markers reviewed", "markers"),
+        ("Canonical marker review done", "canonical_markers"),
+    ]:
+        status, detail = _review_bundle_exists(latest_run, step)
+        checks.append({"check": label, "status": status, "detail": detail})
+
+    harmony = config.get("harmony") or {}
+    harmony_enabled = bool(harmony.get("enabled", False))
+    harmony_batch_key = harmony.get("batch_key")
+    if harmony_enabled and _has_dangerous_harmony_key(harmony_batch_key):
+        harmony_status = "WARNING"
+        harmony_detail = (
+            f"harmony.batch_key is {harmony_batch_key}; do not use biological, clinical, "
+            "phenotype, diagnosis, condition, or outcome variables."
+        )
+    elif harmony_enabled:
+        harmony_status = "OK"
+        harmony_detail = f"Harmony enabled with batch key: {harmony_batch_key}"
+    else:
+        harmony_status = "INFO"
+        harmony_detail = "Harmony disabled."
+    checks.append(
+        {
+            "check": "Harmony batch key safety",
+            "status": harmony_status,
+            "detail": harmony_detail,
+        }
+    )
+
+    latest_run_detail = latest_run.name if latest_run is not None else "No run folder found."
+    checks.append({"check": "Latest reviewed run", "status": "INFO", "detail": latest_run_detail})
+
+    display(pd.DataFrame(checks))
+
+    key_parameters = {
+        "run.id": (config.get("run") or {}).get("id"),
+        "debug.max_cells": debug_max_cells,
+        "qc.min_genes": (config.get("qc") or {}).get("min_genes"),
+        "qc.max_pct_mt": (config.get("qc") or {}).get("max_pct_mt"),
+        "hvg.n_top_genes": (config.get("hvg") or {}).get("n_top_genes"),
+        "pca.n_comps": (config.get("pca") or {}).get("n_comps"),
+        "harmony.enabled": harmony_enabled,
+        "harmony.batch_key": harmony_batch_key,
+        "neighbors.n_neighbors": (config.get("neighbors") or {}).get("n_neighbors"),
+        "neighbors.n_pcs": (config.get("neighbors") or {}).get("n_pcs"),
+        "clustering.resolution": (config.get("clustering") or {}).get("resolution"),
+        "markers.groupby": (config.get("markers") or {}).get("groupby"),
+    }
+    display(
+        pd.DataFrame(
+            [{"parameter": key, "value": value} for key, value in key_parameters.items()]
+        )
+    )
+    print("This checklist does not run analysis. Launch the full server run manually only after warnings are resolved.")
+    return None
+
+
 def suggest_next_action():
     try:
         latest_run = get_latest_run()
@@ -465,6 +655,34 @@ def show_stage_decision_options(step):
         print("- Inspect additional batch/metadata plots if undercorrection or overcorrection remains unclear.")
         print("")
         print("Use suggest_next_action() only after making the Harmony decision.")
+        return None
+    if step_key in {"cluster", "clustering"}:
+        print("After clustering review, choose one:")
+        print("- Continue to marker analysis if UMAP structure and Leiden granularity look acceptable.")
+        print("- Edit Leiden resolution and rerun clustering if clusters are too coarse or too granular.")
+        print("- Edit neighbors_n_pcs or neighbors_n_neighbors and rerun clustering if graph structure looks unstable.")
+        print("- Revisit Harmony if clusters appear batch-driven or if major biology appears overcorrected.")
+        print("- Inspect additional metadata or QC overlays if cluster drivers remain unclear.")
+        print("")
+        print("Use suggest_next_action() only after making the clustering decision.")
+        return None
+    if step_key == "markers":
+        print("After marker review, choose one:")
+        print("- Continue to manual annotation only if marker genes are coherent and cluster quality looks acceptable.")
+        print("- Recheck small, mixed, or low-quality clusters before assigning biological labels.")
+        print("- Lower Leiden resolution and rerun clustering/markers if many clusters lack distinct markers.")
+        print("- Increase Leiden resolution and rerun clustering/markers if broad clusters contain mixed marker programs.")
+        print("- Revisit QC, Harmony, or clustering if marker patterns suggest doublets, stress, batch effects, or overcorrection.")
+        print("")
+        print("Use suggest_next_action() only after making the marker decision.")
+        return None
+    if step_key in {"canonical_markers", "canonical_marker_review", "annotation"}:
+        print("After canonical marker review, choose one:")
+        print("- Draft broad manual labels only for clusters with coherent marker evidence.")
+        print("- Keep ambiguous, mixed, tiny, or low-confidence clusters unlabeled until expert review.")
+        print("- Edit the canonical marker panel and rerun the review if important lineage markers are missing.")
+        print("- Revisit clustering or Harmony if canonical markers suggest fragmentation, mixing, or overcorrection.")
+        print("- Do not make disease, phenotype, or condition interpretation from this review.")
         return None
 
     print(f"No stage-specific decision options are configured for: {step}")
@@ -711,6 +929,7 @@ def show_marker_figures():
     figures_dir = latest_run / "figures"
     expected_paths = [
         figures_dir / "marker_dotplot_top_genes.png",
+        figures_dir / "marker_matrixplot_top_genes.png",
     ]
     print(f"Latest run: {latest_run}")
     print("Marker figure paths:")
@@ -727,6 +946,7 @@ def show_marker_plots():
     figures_dir = latest_run / "figures"
     marker_plots = [
         ("Marker dotplot top genes", figures_dir / "marker_dotplot_top_genes.png"),
+        ("Marker matrixplot top genes", figures_dir / "marker_matrixplot_top_genes.png"),
     ]
     for title, path in marker_plots:
         print(f"\n=== {title} ===")
@@ -761,8 +981,19 @@ def _flatten_parameters(section: dict, prefix: str = "") -> dict:
         if isinstance(value, dict):
             flattened.update(_flatten_parameters(value, label))
         else:
-            flattened[label] = value
+                flattened[label] = value
     return flattened
+
+
+def _safe_review_table(path: Path, drop_columns: Optional[set[str]] = None) -> pd.DataFrame:
+    table = pd.read_csv(path)
+    columns_to_drop = set(drop_columns or set())
+    columns_to_drop.update(
+        column
+        for column in table.columns
+        if column.lower().endswith("_path") or column.lower() in {"input_h5ad"}
+    )
+    return table.drop(columns=[column for column in columns_to_drop if column in table.columns])
 
 
 def _stage_parameter_lines(step: str) -> list[str]:
@@ -787,7 +1018,7 @@ def _stage_parameter_lines(step: str) -> list[str]:
         _append_parameter_section(lines, "Neighbors", _flatten_parameters(config.get("neighbors", {})))
         _append_parameter_section(lines, "UMAP", _flatten_parameters(config.get("umap", {})))
         _append_parameter_section(lines, "Clustering", _flatten_parameters(config.get("clustering", {})))
-    elif step_key == "markers":
+    elif step_key in {"markers", "canonical_markers", "canonical_marker_review", "annotation"}:
         _append_parameter_section(lines, "Markers", _flatten_parameters(config.get("markers", {})))
         _append_parameter_section(lines, "Clustering Context", _flatten_parameters(config.get("clustering", {})))
     else:
@@ -842,9 +1073,48 @@ def _stage_figure_paths(step: str, figures_dir: Path) -> list[Path]:
         ]
     if step_key == "markers":
         return [
-            path for path in all_figure_paths if path.name in {"marker_dotplot_top_genes.png"}
+            path
+            for path in all_figure_paths
+            if path.name
+            in {
+                "marker_dotplot_top_genes.png",
+                "marker_matrixplot_top_genes.png",
+            }
+        ]
+    if step_key in {"canonical_markers", "canonical_marker_review", "annotation"}:
+        return [
+            path
+            for path in all_figure_paths
+            if path.name
+            in {
+                "marker_dotplot_top_genes.png",
+                "marker_matrixplot_top_genes.png",
+            }
         ]
     return all_figure_paths
+
+
+def _best_practice_checklist_text(step: str) -> str:
+    ctx = _ctx()
+    step_key = str(step).lower()
+    checklist_by_step = {
+        "qc": "qc.md",
+        "preprocess": "preprocess.md",
+        "harmony": "harmony.md",
+        "cluster": "clustering.md",
+        "clustering": "clustering.md",
+        "markers": "markers.md",
+        "canonical_markers": "canonical_annotation.md",
+        "canonical_marker_review": "canonical_annotation.md",
+        "annotation": "canonical_annotation.md",
+    }
+    checklist_name = checklist_by_step.get(step_key)
+    if checklist_name is None:
+        return "Stage-specific best-practice checklist is not configured for this step."
+    checklist_path = ctx.project_root / "prompts" / "best_practices" / checklist_name
+    if not checklist_path.exists():
+        return f"Stage-specific best-practice checklist not found: `{checklist_path.name}`"
+    return checklist_path.read_text(encoding="utf-8").strip()
 
 
 def _append_qc_doublet_summary(lines: list[str], obs: pd.DataFrame) -> None:
@@ -909,7 +1179,11 @@ def _append_qc_doublet_summary(lines: list[str], obs: pd.DataFrame) -> None:
     lines.append("")
 
 
-def create_review_packet(step, contact_sheet_name: Optional[str] = None):
+def create_review_packet(
+    step,
+    contact_sheet_name: Optional[str] = None,
+    canonical_marker_panels: Optional[dict[str, list[str]]] = None,
+):
     ctx = _ctx()
     latest_run = get_latest_run()
     packet_path = latest_run / "biology_review_packet.md"
@@ -934,6 +1208,9 @@ def create_review_packet(step, contact_sheet_name: Optional[str] = None):
         "cluster": data_dir / "clustered.h5ad",
         "clustering": data_dir / "clustered.h5ad",
         "markers": data_dir / "markers.h5ad",
+        "canonical_markers": data_dir / "markers.h5ad",
+        "canonical_marker_review": data_dir / "markers.h5ad",
+        "annotation": data_dir / "markers.h5ad",
         "plots": data_dir / "plots.h5ad",
     }
     expected_h5ad = expected_h5ad_by_step.get(step_key)
@@ -942,12 +1219,13 @@ def create_review_packet(step, contact_sheet_name: Optional[str] = None):
         if expected_h5ad is not None and expected_h5ad.exists()
         else latest_h5ad
     )
-    if step_key == "markers" and expected_h5ad is not None and not expected_h5ad.exists():
+    marker_review_steps = {"markers", "canonical_markers", "canonical_marker_review", "annotation"}
+    if step_key in marker_review_steps and expected_h5ad is not None and not expected_h5ad.exists():
         clustered_h5ad = data_dir / "clustered.h5ad"
         selected_h5ad = clustered_h5ad if clustered_h5ad.exists() else latest_h5ad
     h5ad_warning = None
     if expected_h5ad is not None and not expected_h5ad.exists():
-        if step_key == "markers":
+        if step_key in marker_review_steps:
             h5ad_warning = (
                 f"Expected h5ad for step '{step}' was missing: `{expected_h5ad}`. "
                 "Falling back to clustered h5ad if available."
@@ -977,7 +1255,7 @@ def create_review_packet(step, contact_sheet_name: Optional[str] = None):
     if step_key == "harmony":
         lines.append("## Harmony Summary")
         if harmony_summary_path.exists():
-            lines.append(pd.read_csv(harmony_summary_path).to_markdown(index=False))
+            lines.append(_safe_review_table(harmony_summary_path).to_markdown(index=False))
         else:
             lines.append("Harmony summary not available.")
         lines.append("")
@@ -985,17 +1263,28 @@ def create_review_packet(step, contact_sheet_name: Optional[str] = None):
     if step_key in {"cluster", "clustering"}:
         lines.append("## Clustering Summary")
         if clustering_summary_path.exists():
-            lines.append(pd.read_csv(clustering_summary_path).to_markdown(index=False))
+            lines.append(_safe_review_table(clustering_summary_path).to_markdown(index=False))
         else:
             lines.append("Clustering summary not available.")
         lines.append("")
 
-    if step_key == "markers":
+    if step_key in marker_review_steps:
         lines.append("## Marker Summary")
         if markers_summary_path.exists():
-            lines.append(pd.read_csv(markers_summary_path).to_markdown(index=False))
+            lines.append(_safe_review_table(markers_summary_path).to_markdown(index=False))
         else:
             lines.append("Marker summary not available.")
+        lines.append("")
+
+    if step_key in {"canonical_markers", "canonical_marker_review", "annotation"}:
+        lines.append("## Canonical Marker Panels")
+        lines.append(_canonical_marker_panel_frame(canonical_marker_panels).to_markdown(index=False))
+        lines.append("")
+        lines.append("Interpretation rules:")
+        lines.append("- Use canonical panels as supporting evidence, not automatic labels.")
+        lines.append("- Prefer broad labels unless marker evidence is strong and specific.")
+        lines.append("- Flag mixed, tiny, low-quality, or conflicting clusters as uncertain.")
+        lines.append("- Do not infer disease, condition, phenotype, or treatment effects.")
         lines.append("")
 
     lines.append("## Latest AnnData Summary")
@@ -1015,7 +1304,7 @@ def create_review_packet(step, contact_sheet_name: Optional[str] = None):
                 f"- obs columns (showing first {len(shown_obs_columns)} of {len(obs_columns)}): "
                 + ", ".join(f"`{col}`" for col in shown_obs_columns)
             )
-            if step_key in {"preprocess", "harmony", "cluster", "clustering", "markers"}:
+            if step_key in {"preprocess", "harmony", "cluster", "clustering", "markers", "canonical_markers", "canonical_marker_review", "annotation"}:
                 hvg_count = (
                     int(adata.var["highly_variable"].sum())
                     if "highly_variable" in adata.var
@@ -1028,13 +1317,13 @@ def create_review_packet(step, contact_sheet_name: Optional[str] = None):
                 lines.append(
                     f"- X_pca shape: `{x_pca.shape if x_pca is not None else 'not available'}`"
                 )
-                if step_key in {"harmony", "cluster", "clustering", "markers"}:
+                if step_key in {"harmony", "cluster", "clustering", "markers", "canonical_markers", "canonical_marker_review", "annotation"}:
                     x_pca_harmony = adata.obsm.get("X_pca_harmony")
                     lines.append(f"- X_pca_harmony present: `{x_pca_harmony is not None}`")
                     lines.append(
                         f"- X_pca_harmony shape: `{x_pca_harmony.shape if x_pca_harmony is not None else 'not available'}`"
                     )
-                if step_key in {"cluster", "clustering", "markers"}:
+                if step_key in {"cluster", "clustering", "markers", "canonical_markers", "canonical_marker_review", "annotation"}:
                     x_umap = adata.obsm.get("X_umap")
                     clustering_key = "leiden"
                     lines.append(f"- X_umap present: `{x_umap is not None}`")
@@ -1061,17 +1350,18 @@ def create_review_packet(step, contact_sheet_name: Optional[str] = None):
         lines.append("Latest h5ad not available.")
     lines.append("")
 
-    lines.append("## Marker Table")
-    if marker_table_path.exists():
-        marker_table = pd.read_csv(marker_table_path)
-        if step_key == "markers" and "cluster" in marker_table.columns:
-            preview = marker_table.groupby("cluster", sort=False).head(5)
+    if step_key in marker_review_steps:
+        lines.append("## Marker Table")
+        if marker_table_path.exists():
+            marker_table = pd.read_csv(marker_table_path)
+            if "cluster" in marker_table.columns:
+                preview = marker_table.groupby("cluster", sort=False).head(5)
+            else:
+                preview = marker_table.head(50)
+            lines.append(preview.to_markdown(index=False))
         else:
-            preview = marker_table.head(50)
-        lines.append(preview.to_markdown(index=False))
-    else:
-        lines.append("Marker table not available for this step.")
-    lines.append("")
+            lines.append("Marker table not available for this step.")
+        lines.append("")
 
     lines.append("## Figure Summary")
     if contact_sheet_name is not None:
@@ -1155,6 +1445,21 @@ Please evaluate:
 - Whether manual annotation can be considered later.
 - Whether any cluster should be merged, split, or rechecked.
 """.strip()
+    elif step in {"canonical_markers", "canonical_marker_review", "annotation"}:
+        step_guidance = """
+## Canonical Marker Review Guidance
+
+Please evaluate:
+
+- Which broad canonical cell class is supported for each cluster, if any.
+- Which canonical markers support each tentative label.
+- Which clusters are ambiguous, mixed, tiny, low-quality, or potentially doublet-like.
+- Whether any clusters should remain unlabeled pending human expert review.
+- Whether clustering, Harmony, or marker parameters should be revisited before annotation.
+
+Do not make disease, phenotype, condition, treatment, diagnosis, or outcome interpretations.
+Do not present labels as final; use tentative broad labels with confidence notes.
+""".strip()
 
     contact_sheet_guidance = ""
     if contact_sheet_name is not None:
@@ -1163,6 +1468,8 @@ Please evaluate:
             f"`{contact_sheet_name}`.\n"
         )
 
+    best_practice_checklist = _best_practice_checklist_text(step)
+
     prompt = f"""
 Use prompts/biology_reviewer.md as your reviewer instructions.
 
@@ -1170,6 +1477,10 @@ Please review this single-cell run using only the packet content below and any p
 {contact_sheet_guidance}
 
 {step_guidance}
+
+## Stage-Specific Best-Practice Checklist
+
+{best_practice_checklist}
 
 {packet_text}
 """.strip()
@@ -1209,7 +1520,7 @@ def _create_contact_sheet(figure_paths: list[Path], output_path: Path) -> Option
     return output_path
 
 
-def create_review_bundle(step):
+def create_review_bundle(step, canonical_marker_panels: Optional[dict[str, list[str]]] = None):
     ctx = _ctx()
     latest_run = get_latest_run()
     step_key = str(step).lower()
@@ -1223,6 +1534,7 @@ def create_review_bundle(step):
     packet_path = create_review_packet(
         step,
         contact_sheet_name=contact_sheet_name if contact_sheet_path is not None else None,
+        canonical_marker_panels=canonical_marker_panels,
     )
     packet_text = packet_path.read_text(encoding="utf-8")
     prompt = _build_reviewer_prompt(
@@ -1267,6 +1579,12 @@ def create_review_bundle(step):
 
 def create_review_request(step):
     return create_review_bundle(step)
+
+
+def create_canonical_marker_review_request(
+    panels: Optional[dict[str, list[str]]] = None,
+):
+    return create_review_bundle("canonical_markers", canonical_marker_panels=panels)
 
 
 def print_reviewer_prompt(step):

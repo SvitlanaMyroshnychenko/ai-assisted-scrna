@@ -1,0 +1,151 @@
+Use prompts/biology_reviewer.md as your reviewer instructions.
+
+Please review this single-cell run using only the packet content below and any plots/screenshots I provide. Do not access data/ or inspect h5ad files directly unless I explicitly allow it.
+
+Please inspect the attached contact sheet image: `plots_contact_sheet_ec_debug_20260513_143103_markers.png`.
+
+
+## Marker Review Guidance
+
+Please evaluate:
+
+- Whether marker genes look biologically plausible.
+- Whether clusters appear well-separated by markers.
+- Whether any clusters look low-quality, doublet-like, or mixed.
+- Whether Leiden resolution should be adjusted.
+- Whether manual annotation can be considered later.
+- Whether any cluster should be merged, split, or rechecked.
+
+# Biology Review Packet
+
+- Review step: `markers`
+- Run: `ec_debug_20260513_143103`
+- Config: `configs/pipeline.server.yaml`
+
+## Current Stage Parameters
+
+### Markers
+- groupby: `leiden`
+- method: `wilcoxon`
+- n_genes: `100`
+- plot_top_n: `5`
+
+### Clustering Context
+- method: `leiden`
+- resolution: `0.5`
+- key_added: `leiden`
+- metadata_keys: `['leiden', 'individualID', 'major.celltype', 'hcelltype', 'region']`
+- random_state: `42`
+
+## QC Summary
+| sample_id   |   cells_before_filtering |   cells_after_filtering |   cells_removed |   min_genes |   min_cells |   max_pct_mt |   max_genes |   max_counts | mad_filter_enabled   |   log1p_total_counts_nmads |   log1p_n_genes_by_counts_nmads |   pct_counts_mt_nmads | mt_direction   |
+|:------------|-------------------------:|------------------------:|----------------:|------------:|------------:|-------------:|------------:|-------------:|:---------------------|---------------------------:|--------------------------------:|----------------------:|:---------------|
+| all         |                     5000 |                    4255 |             745 |         201 |          10 |            8 |         nan |          nan | True                 |                          5 |                               5 |                     3 | upper          |
+
+## Marker Summary
+| input_h5ad                                                                               |   cells |   genes | groupby   | method   |   n_groups | groups                                           |   n_genes_requested | used_raw   | marker_table_path                                                                               |
+|:-----------------------------------------------------------------------------------------|--------:|--------:|:----------|:---------|-----------:|:-------------------------------------------------|--------------------:|:-----------|:------------------------------------------------------------------------------------------------|
+| /mnt/12tb_dsk3/svitlana/scrna-agent/results/ec_debug_20260513_143103/data/clustered.h5ad |    4255 |   15519 | leiden    | wilcoxon |         15 | 0; 1; 10; 11; 12; 13; 14; 2; 3; 4; 5; 6; 7; 8; 9 |                 100 | True       | /mnt/12tb_dsk3/svitlana/scrna-agent/results/ec_debug_20260513_143103/tables/cluster_markers.csv |
+
+## Latest AnnData Summary
+- Latest h5ad: `markers.h5ad`
+- Cells: `4255`
+- Genes: `15519`
+- obs columns (showing first 25 of 88): `region`, `braaksc`, `inh.subtype`, `spanish`, `is.doublet`, `cts_mmse30_lv`, `individualIdSource`, `cogdx`, `individualID`, `cts_mmse30_first_ad_dx`, `hcluster`, `major.celltype`, `neuronal.layer`, `clinical_pathological_AD`, `lbl`, `U2`, `rind`, `sex`, `clinical_diagnosis`, `ceradsc`, `tspcol`, `col`, `hcelltype`, `full.exttype`, `neuronal.exttype`
+- highly variable genes: `3050`
+- raw present: `True`
+- X_pca present: `True`
+- X_pca shape: `(4255, 55)`
+- X_pca_harmony present: `True`
+- X_pca_harmony shape: `(4255, 55)`
+- X_umap present: `True`
+- X_umap shape: `(4255, 2)`
+- Leiden key present: `True`
+- number of clusters: `15`
+- cluster sizes preview: `0:1109; 1:559; 10:102; 11:18; 12:17; 13:16; 14:13; 2:530; 3:514; 4:411; ... (15 total)`
+- obsm keys: `X_pca`, `X_pca_harmony`, `X_umap`
+- layers: `counts`
+
+## Marker Table
+|   cluster | gene        |   rank |    score |   logfoldchange |         pval |     pval_adj |
+|----------:|:------------|-------:|---------:|----------------:|-------------:|-------------:|
+|         0 | PLP1        |      1 | 48.1707  |         6.73673 | 0            | 0            |
+|         0 | PIP4K2A     |      2 | 44.1046  |         4.0347  | 0            | 0            |
+|         0 | MBP         |      3 | 43.9827  |         4.30257 | 0            | 0            |
+|         0 | SLC44A1     |      4 | 43.9773  |         4.02132 | 0            | 0            |
+|         0 | TTLL7       |      5 | 43.9705  |         3.67309 | 0            | 0            |
+|         1 | IQCJ-SCHIP1 |      1 | 36.2886  |         5.04233 | 2.44921e-288 | 3.80093e-284 |
+|         1 | ST6GALNAC5  |      2 | 34.7781  |         4.86855 | 5.20559e-265 | 4.03928e-261 |
+|         1 | DLGAP2      |      3 | 34.6591  |         4.69668 | 3.25783e-263 | 1.68528e-259 |
+|         1 | KCNIP4      |      4 | 34.5685  |         5.11264 | 7.51163e-262 | 2.91432e-258 |
+|         1 | HS6ST3      |      5 | 34.1967  |         4.69808 | 2.70531e-256 | 8.39675e-253 |
+|         2 | DTNA        |      1 | 35.4606  |         4.30523 | 1.99471e-275 | 3.0956e-271  |
+|         2 | SORBS1      |      2 | 34.9769  |         4.0697  | 5.04793e-268 | 3.91694e-264 |
+|         2 | ADGRV1      |      3 | 34.9014  |         6.92192 | 7.07583e-267 | 3.66033e-263 |
+|         2 | GPM6A       |      4 | 34.7937  |         4.14869 | 3.02382e-265 | 1.17317e-261 |
+|         2 | PITPNC1     |      5 | 34.6933  |         4.93639 | 9.94191e-264 | 3.08577e-260 |
+|         3 | PLXDC2      |      1 | 36.3327  |         4.48083 | 4.92822e-289 | 7.64811e-285 |
+|         3 | DOCK8       |      2 | 35.3494  |         8.72393 | 1.02433e-273 | 4.02836e-270 |
+|         3 | DOCK4       |      3 | 34.5222  |         2.79498 | 3.72627e-261 | 9.63799e-258 |
+|         3 | ARHGAP24    |      4 | 34.464   |         6.34544 | 2.77921e-260 | 6.16151e-257 |
+|         3 | APBB1IP     |      5 | 34.1672  |         9.18028 | 7.43483e-256 | 1.28201e-252 |
+|         4 | TNR         |      1 | 33.347   |         5.94298 | 8.05267e-244 | 1.24969e-239 |
+|         4 | DSCAM       |      2 | 33.2563  |         5.40077 | 1.65537e-242 | 1.28449e-238 |
+|         4 | LHFPL3      |      3 | 33.0127  |         6.78518 | 5.34465e-239 | 2.76479e-235 |
+|         4 | PCDH15      |      4 | 32.9242  |         6.0712  | 9.90089e-238 | 3.8413e-234  |
+|         4 | PTPRZ1      |      5 | 32.7991  |         5.73927 | 6.06928e-236 | 1.88378e-232 |
+|         5 | ST18        |      1 | 19.5154  |         3.82707 | 8.12637e-85  | 1.26113e-80  |
+|         5 | CTNNA3      |      2 | 18.5025  |         3.52284 | 1.97072e-76  | 1.52918e-72  |
+|         5 | RNF220      |      3 | 18.0903  |         3.25426 | 3.80118e-73  | 1.47476e-69  |
+|         5 | MBP         |      4 | 17.5743  |         2.7808  | 3.87306e-69  | 1.00177e-65  |
+|         5 | IL1RAPL1    |      5 | 16.9774  |         2.16011 | 1.20804e-64  | 2.34344e-61  |
+|         6 | ADARB2      |      1 | 23.3281  |         5.11219 | 2.29817e-120 | 3.56653e-116 |
+|         6 | RGS12       |      2 | 22.2518  |         4.06475 | 1.08444e-109 | 8.41471e-106 |
+|         6 | SYNPR       |      3 | 22.2024  |         5.35561 | 3.25548e-109 | 1.68406e-105 |
+|         6 | ERBB4       |      4 | 21.3916  |         3.81281 | 1.59858e-101 | 6.20211e-98  |
+|         6 | NRXN3       |      5 | 20.8177  |         3.30781 | 2.99091e-96  | 9.28318e-93  |
+|         7 | RYR2        |      1 | 20.354   |         3.9096  | 4.27862e-92  | 6.63999e-88  |
+|         7 | RALYL       |      2 | 19.6471  |         4.18195 | 6.11697e-86  | 4.74646e-82  |
+|         7 | SLC35F3     |      3 | 19.0807  |         3.70978 | 3.65167e-81  | 1.88901e-77  |
+|         7 | PHACTR1     |      4 | 18.82    |         3.44885 | 5.17564e-79  | 2.00802e-75  |
+|         7 | RBFOX1      |      5 | 18.7706  |         4.37547 | 1.31373e-78  | 4.07756e-75  |
+|         8 | CLSTN2      |      1 | 18.2175  |         4.89894 | 3.7462e-74   | 5.81372e-70  |
+|         8 | ADAMTSL1    |      2 | 17.9794  |         6.94295 | 2.82411e-72  | 2.19137e-68  |
+|         8 | KIAA1217    |      3 | 17.8949  |         5.03958 | 1.29203e-71  | 6.68369e-68  |
+|         8 | FRMPD4      |      4 | 17.6236  |         4.1257  | 1.62464e-69  | 6.30318e-66  |
+|         8 | MDGA2       |      5 | 17.3952  |         3.53523 | 8.96646e-68  | 2.78301e-64  |
+|         9 | GRIP1       |      1 | 17.7588  |         5.03182 | 1.47469e-70  | 2.28858e-66  |
+|         9 | CNTNAP2     |      2 | 17.6469  |         4.36701 | 1.07581e-69  | 8.24711e-66  |
+|         9 | PAM         |      3 | 17.6246  |         3.71765 | 1.59426e-69  | 8.24711e-66  |
+|         9 | NXPH1       |      4 | 17.5612  |         5.60495 | 4.88619e-69  | 1.89572e-65  |
+|         9 | KCNC2       |      5 | 17.4527  |         4.71647 | 3.28187e-68  | 9.54896e-65  |
+|        10 | FSTL5       |      1 | 16.8355  |         5.90049 | 1.34065e-63  | 2.08055e-59  |
+|        10 | GRIP1       |      2 | 16.7183  |         5.61633 | 9.6369e-63   | 7.47775e-59  |
+|        10 | FGF13       |      3 | 16.5518  |         6.01888 | 1.5543e-61   | 8.0404e-58   |
+|        10 | KAZN        |      4 | 16.4474  |         3.85117 | 8.75531e-61  | 3.39684e-57  |
+|        10 | FGF14       |      5 | 16.1542  |         4.25672 | 1.0612e-58   | 3.29376e-55  |
+|        11 | FLT1        |      1 |  7.3184  |        10.0851  | 2.50952e-13  | 3.89452e-09  |
+|        11 | ABCB1       |      2 |  6.88837 |         8.53866 | 5.64345e-12  | 4.37904e-08  |
+|        11 | PTPRG       |      3 |  6.58919 |         3.89962 | 4.4223e-11   | 2.28765e-07  |
+|        11 | CLDN5       |      4 |  6.51488 |        12.4978  | 7.27495e-11  | 2.8225e-07   |
+|        11 | MECOM       |      5 |  6.41739 |         7.14118 | 1.38628e-10  | 4.30274e-07  |
+|        12 | F13A1       |      1 |  7.10851 |        10.0262  | 1.17306e-12  | 1.82046e-08  |
+|        12 | FMN1        |      2 |  6.69544 |         5.21045 | 2.15017e-11  | 1.66843e-07  |
+|        12 | TBXAS1      |      3 |  6.31809 |         5.11879 | 2.64816e-10  | 1.07584e-06  |
+|        12 | RBM47       |      4 |  6.31097 |         5.8612  | 2.77295e-10  | 1.07584e-06  |
+|        12 | MRC1        |      5 |  6.17852 |         7.26009 | 6.4704e-10   | 2.00828e-06  |
+|        13 | NID1        |      1 |  6.88948 |         7.95979 | 5.59976e-12  | 3.47885e-08  |
+|        13 | LAMA2       |      2 |  6.8852  |         7.66253 | 5.7708e-12   | 3.47885e-08  |
+|        13 | ABCA9       |      3 |  6.86338 |         7.63855 | 6.72501e-12  | 3.47885e-08  |
+|        13 | NTRK3       |      4 |  6.65939 |         4.66336 | 2.74972e-11  | 1.06682e-07  |
+|        13 | UACA        |      5 |  6.36843 |         6.01118 | 1.90968e-10  | 5.92725e-07  |
+|        14 | PTPRC       |      1 |  5.96202 |         6.14832 | 2.49137e-09  | 3.86635e-05  |
+|        14 | MBNL1       |      2 |  5.47361 |         3.00494 | 4.40961e-08  | 0.000342164  |
+|        14 | CCND3       |      3 |  5.21527 |         4.30985 | 1.83549e-07  | 0.000712124  |
+|        14 | ARHGAP15    |      4 |  5.09735 |         4.97554 | 3.4444e-07   | 0.00089837   |
+|        14 | IKZF1       |      5 |  4.97106 |         5.42907 | 6.65863e-07  | 0.00108582   |
+
+## Figure Summary
+Review the attached contact sheet: `plots_contact_sheet_ec_debug_20260513_143103_markers.png`
+
+This packet intentionally excludes raw expression matrix data.

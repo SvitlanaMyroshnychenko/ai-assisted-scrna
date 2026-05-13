@@ -1189,10 +1189,11 @@ def save_clustering_plots(adata: ad.AnnData, paths: dict[str, Path], config: dic
         logging.warning("Skipping clustering UMAP plots because X_umap is not present in adata.obsm.")
         return
 
-    clustering_key = "leiden"
+    clustering = config.get("clustering", {}) or {}
+    clustering_key = str(clustering.get("key_added", "leiden"))
     leiden_palette = sc.pl.palettes.godsnot_102
 
-    qc_counts_genes = ["total_counts", "n_genes_by_counts"]
+    qc_counts_genes = ["total_counts", "n_genes_by_counts", "pct_counts_mt"]
     missing_qc = [column for column in qc_counts_genes if column not in adata.obs]
     if missing_qc:
         logging.warning(
@@ -1204,15 +1205,15 @@ def save_clustering_plots(adata: ad.AnnData, paths: dict[str, Path], config: dic
             f"columns are missing: {missing_qc}"
         )
     else:
-        with plt.rc_context({"figure.figsize": (10, 6)}):
+        with plt.rc_context({"figure.figsize": (13, 4.2), "figure.dpi": 140, "font.size": 10}):
             sc.pl.umap(
                 adata,
                 color=qc_counts_genes,
-                cmap="magma",
+                cmap="viridis",
                 size=3,
-                ncols=2,
+                ncols=3,
                 frameon=False,
-                title=["Total Counts", "Number of Genes"],
+                title=["Total counts", "Detected genes", "Mitochondrial counts (%)"],
                 show=False,
             )
         fig = plt.gcf()
@@ -1226,7 +1227,8 @@ def save_clustering_plots(adata: ad.AnnData, paths: dict[str, Path], config: dic
         adata.uns[f"{clustering_key}_colors"] = leiden_palette
         with plt.rc_context(
             {
-                "figure.figsize": (10, 8),
+                "figure.figsize": (10, 7),
+                "figure.dpi": 140,
                 "font.size": 10,
                 "legend.fontsize": 10,
             }
@@ -1234,7 +1236,7 @@ def save_clustering_plots(adata: ad.AnnData, paths: dict[str, Path], config: dic
             sc.pl.umap(
                 adata,
                 color=clustering_key,
-                size=2,
+                size=4,
                 frameon=False,
                 title="Leiden Clusters",
                 legend_loc="right margin",
@@ -1251,6 +1253,7 @@ def save_clustering_plots(adata: ad.AnnData, paths: dict[str, Path], config: dic
         sc.pl.umap(
             adata,
             color=clustering_key,
+            size=4,
             legend_loc="on data",
             legend_fontsize=10,
             legend_fontoutline=2,
@@ -1263,56 +1266,65 @@ def save_clustering_plots(adata: ad.AnnData, paths: dict[str, Path], config: dic
         fig.savefig(figures_dir / "umap_leiden_numbered.png", bbox_inches="tight")
         plt.close(fig)
 
-    dataset_label = str(config.get("dataset_id") or config.get("project_name") or "Dataset")
-    target_metadata = ["leiden", "major.celltype", "Pathologic_diagnosis_of_AD", "braaksc"]
-    with plt.rc_context({"figure.dpi": 120, "font.size": 14}):
-        fig, axes = plt.subplots(2, 2, figsize=(16, 10))
-        axes = axes.flatten()
-        plotted_any = False
-        for i, metadata in enumerate(target_metadata):
-            if metadata not in adata.obs.columns:
-                logging.warning(
-                    "Skipping metadata panel for %s because it is missing from adata.obs.",
-                    metadata,
-                )
-                print(
-                    "WARNING: skipping metadata panel for "
-                    f"{metadata} because it is missing from adata.obs."
-                )
-                axes[i].set_visible(False)
-                continue
+    metadata_keys = clustering.get("metadata_keys") or [
+        clustering_key,
+        "individualID",
+        "major.celltype",
+        "hcelltype",
+        "region",
+    ]
+    target_metadata = []
+    for metadata in metadata_keys:
+        metadata = str(metadata)
+        if metadata and metadata not in target_metadata:
+            target_metadata.append(metadata)
 
-            is_leiden = metadata == "leiden"
-            cmap = "YlOrRd" if metadata == "braaksc" else "magma"
-            sc.pl.umap(
-                adata,
-                color=metadata,
-                ax=axes[i],
-                show=False,
-                frameon=False,
-                title=f"{dataset_label} dataset: {metadata}",
-                add_outline=True,
-                outline_width=(0.1, 0.05),
-                size=3,
-                palette=leiden_palette if is_leiden else None,
-                cmap=cmap,
-                legend_loc="on data" if is_leiden else "right margin",
-                legend_fontsize=10,
-                legend_fontoutline=2,
-            )
-            plotted_any = True
+    available_metadata = [metadata for metadata in target_metadata if metadata in adata.obs.columns]
+    missing_metadata = [metadata for metadata in target_metadata if metadata not in adata.obs.columns]
+    for metadata in missing_metadata:
+        logging.warning("Skipping metadata panel for %s because it is missing from adata.obs.", metadata)
+        print(f"WARNING: skipping metadata panel for {metadata} because it is missing from adata.obs.")
 
-        if plotted_any:
-            plt.tight_layout(pad=1.0)
-            plt.subplots_adjust(wspace=0.1, hspace=0.15)
-            fig.savefig(figures_dir / "umap_metadata_panel.png", bbox_inches="tight")
-        else:
-            logging.warning("Skipping umap_metadata_panel.png because none of the target metadata columns exist.")
-            print(
-                "WARNING: skipping umap_metadata_panel.png because none of the "
-                "target metadata columns exist."
-            )
-        plt.close(fig)
+    if available_metadata:
+        ncols = min(3, len(available_metadata))
+        nrows = int(np.ceil(len(available_metadata) / ncols))
+        with plt.rc_context({"figure.dpi": 140, "font.size": 11}):
+            fig, axes = plt.subplots(nrows, ncols, figsize=(5.2 * ncols, 4.4 * nrows))
+            axes = np.asarray(axes).reshape(-1)
+            for ax in axes[len(available_metadata) :]:
+                ax.set_visible(False)
+            plotted_any = False
+            for ax, metadata in zip(axes, available_metadata):
+                is_clustering_key = metadata == clustering_key
+                is_numeric = pd.api.types.is_numeric_dtype(adata.obs[metadata])
+                sc.pl.umap(
+                    adata,
+                    color=metadata,
+                    ax=ax,
+                    show=False,
+                    frameon=False,
+                    title=metadata,
+                    add_outline=is_clustering_key,
+                    outline_width=(0.1, 0.05),
+                    size=4,
+                    palette=leiden_palette if is_clustering_key else None,
+                    cmap="viridis" if is_numeric else None,
+                    legend_loc="on data" if is_clustering_key else "right margin",
+                    legend_fontsize=9,
+                    legend_fontoutline=2,
+                )
+                plotted_any = True
+
+            if plotted_any:
+                plt.tight_layout(pad=1.0)
+                fig.savefig(figures_dir / "umap_metadata_panel.png", bbox_inches="tight")
+            plt.close(fig)
+    else:
+        logging.warning("Skipping umap_metadata_panel.png because none of the configured metadata columns exist.")
+        print(
+            "WARNING: skipping umap_metadata_panel.png because none of the "
+            "configured metadata columns exist."
+        )
 
 
 def save_marker_plots(adata: ad.AnnData, paths: dict[str, Path], config: dict[str, Any]) -> None:
@@ -1321,6 +1333,7 @@ def save_marker_plots(adata: ad.AnnData, paths: dict[str, Path], config: dict[st
 
     markers = config.get("markers", {}) or {}
     groupby = str(markers.get("groupby", config.get("clustering", {}).get("key_added", "leiden")))
+    plot_top_n = int(markers.get("plot_top_n", 5))
     if groupby not in adata.obs:
         logging.warning("Skipping marker plots because groupby key %s is missing.", groupby)
         print(f"WARNING: skipping marker plots because groupby key is missing: {groupby}")
@@ -1331,20 +1344,52 @@ def save_marker_plots(adata: ad.AnnData, paths: dict[str, Path], config: dict[st
         return
 
     try:
-        with plt.rc_context({"figure.figsize": (12, 8), "font.size": 10}):
+        with plt.rc_context({"figure.figsize": (13, 8), "font.size": 10}):
             sc.pl.rank_genes_groups_dotplot(
                 adata,
-                n_genes=5,
+                n_genes=plot_top_n,
                 groupby=groupby,
+                dot_max=0.75,
+                smallest_dot=18,
                 show=False,
             )
         fig = plt.gcf()
-        fig.savefig(figures_dir / "marker_dotplot_top_genes.png", bbox_inches="tight")
+        fig.suptitle(
+            f"Top marker genes by {groupby}",
+            fontsize=14,
+            fontweight="bold",
+            y=1.02,
+        )
+        fig.savefig(figures_dir / "marker_dotplot_top_genes.png", bbox_inches="tight", dpi=180)
         plt.close(fig)
     except Exception as exc:
         plt.close("all")
         logging.warning("Skipping marker_dotplot_top_genes.png because plotting failed: %s", exc)
         print(f"WARNING: skipping marker_dotplot_top_genes.png because plotting failed: {exc}")
+
+    try:
+        with plt.rc_context({"figure.figsize": (13, 8), "font.size": 10}):
+            sc.pl.rank_genes_groups_matrixplot(
+                adata,
+                n_genes=plot_top_n,
+                groupby=groupby,
+                standard_scale="var",
+                cmap="viridis",
+                show=False,
+            )
+        fig = plt.gcf()
+        fig.suptitle(
+            f"Scaled expression of top marker genes by {groupby}",
+            fontsize=14,
+            fontweight="bold",
+            y=1.02,
+        )
+        fig.savefig(figures_dir / "marker_matrixplot_top_genes.png", bbox_inches="tight", dpi=180)
+        plt.close(fig)
+    except Exception as exc:
+        plt.close("all")
+        logging.warning("Skipping marker_matrixplot_top_genes.png because plotting failed: %s", exc)
+        print(f"WARNING: skipping marker_matrixplot_top_genes.png because plotting failed: {exc}")
 
 
 def add_qc_threshold_line(
